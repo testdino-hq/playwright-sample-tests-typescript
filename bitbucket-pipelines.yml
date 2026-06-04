@@ -1,0 +1,144 @@
+# Bitbucket Pipelines for Playwright + TypeScript.
+# Mirrors .github/workflows/test.yml: 5 parallel shards -> merged HTML report -> TestDino upload.
+#
+# Required repository variables (Repository settings -> Pipelines -> Repository variables):
+#   USERNAME, PASSWORD, NEW_PASSWORD, FIRST_NAME,
+#   STREET_NAME, CITY, STATE, COUNTRY, ZIP_CODE,
+#   TESTDINO_TOKEN (mark as Secured)
+
+image: mcr.microsoft.com/playwright:v1.60.0-jammy
+
+definitions:
+  caches:
+    npm: ~/.npm
+
+  steps:
+    - step: &install
+        name: Install dependencies & write .env
+        caches:
+          - npm
+        script:
+          - npm ci
+          - |
+            cat > .env <<EOF
+            USERNAME=${USERNAME}
+            PASSWORD=${PASSWORD}
+            NEW_PASSWORD=${NEW_PASSWORD}
+            FIRST_NAME=${FIRST_NAME}
+            STREET_NAME=${STREET_NAME}
+            CITY=${CITY}
+            STATE=${STATE}
+            COUNTRY=${COUNTRY}
+            ZIP_CODE=${ZIP_CODE}
+            EOF
+        artifacts:
+          - node_modules/**
+          - .env
+
+    - step: &shard-1
+        name: Shard 1/5
+        size: 2x
+        script:
+          - npx playwright test --project=chromium --reporter=blob --shard=1/5
+        artifacts:
+          - blob-report/**
+
+    - step: &shard-2
+        name: Shard 2/5
+        size: 2x
+        script:
+          - npx playwright test --project=chromium --reporter=blob --shard=2/5
+        artifacts:
+          - blob-report/**
+
+    - step: &shard-3
+        name: Shard 3/5
+        size: 2x
+        script:
+          - npx playwright test --project=chromium --reporter=blob --shard=3/5
+        artifacts:
+          - blob-report/**
+
+    - step: &shard-4
+        name: Shard 4/5
+        size: 2x
+        script:
+          - npx playwright test --project=chromium --reporter=blob --shard=4/5
+        artifacts:
+          - blob-report/**
+
+    - step: &shard-5
+        name: Shard 5/5
+        size: 2x
+        script:
+          - npx playwright test --project=chromium --reporter=blob --shard=5/5
+        artifacts:
+          - blob-report/**
+
+    - step: &merge-and-publish
+        name: Merge reports & upload to TestDino
+        script:
+          # Bitbucket forwards artifacts from prior steps. Each shard's blob lands
+          # back under ./blob-report — collect everything into all-blob-reports/.
+          - mkdir -p all-blob-reports
+          - 'find blob-report -type f -exec cp {} all-blob-reports/ \; 2>/dev/null || true'
+          - npx playwright merge-reports --config=playwright.config.ts ./all-blob-reports
+          - |
+            if [ -z "${TESTDINO_TOKEN}" ]; then
+              echo "ERROR: TESTDINO_TOKEN is not set. Add it under Repository settings -> Pipelines -> Repository variables (Secured)."
+              exit 1
+            fi
+            if [ ! -d "./playwright-report" ] || [ -z "$(ls -A ./playwright-report 2>/dev/null)" ]; then
+              echo "ERROR: ./playwright-report is missing or empty. Nothing to upload."
+              exit 1
+            fi
+          - set -o pipefail
+          - npx --yes tdpw ./playwright-report --token="${TESTDINO_TOKEN}" --upload-html --verbose | tee tdpw-upload.log
+          - |
+            if ! grep -Eiq "upload (complete|success|succeeded)|uploaded successfully" tdpw-upload.log; then
+              echo "ERROR: TestDino upload did not report success. See tdpw-upload.log."
+              exit 1
+            fi
+          - echo "TestDino upload verified."
+        artifacts:
+          - playwright-report/**
+          - tdpw-upload.log
+
+pipelines:
+  default:
+    - step: *install
+    - parallel:
+        fail-fast: false
+        steps:
+          - step: *shard-1
+          - step: *shard-2
+          - step: *shard-3
+          - step: *shard-4
+          - step: *shard-5
+    - step: *merge-and-publish
+
+  pull-requests:
+    '**':
+      - step: *install
+      - parallel:
+          fail-fast: false
+          steps:
+            - step: *shard-1
+            - step: *shard-2
+            - step: *shard-3
+            - step: *shard-4
+            - step: *shard-5
+      - step: *merge-and-publish
+
+  custom:
+    nightly:
+      - step: *install
+      - parallel:
+          fail-fast: false
+          steps:
+            - step: *shard-1
+            - step: *shard-2
+            - step: *shard-3
+            - step: *shard-4
+            - step: *shard-5
+      - step: *merge-and-publish
