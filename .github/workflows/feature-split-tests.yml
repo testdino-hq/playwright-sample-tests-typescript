@@ -31,6 +31,7 @@ jobs:
     env:
       CI: true
       TESTDINO_TOKEN: ${{ secrets.TESTDINO_TOKEN }}
+      TESTDINO_SERVER_URL: ${{ secrets.TESTDINO_SERVER_URL }}
       # Shared across every job in the group - this is what merges the seven jobs
       # into one logical run. run_attempt is included so a re-run does not merge
       # back into the original run.
