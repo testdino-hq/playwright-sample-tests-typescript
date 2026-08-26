@@ -1,0 +1,65 @@
+name: Run Playwright Tests (Attachments Suite)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  playwright-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        shardIndex: [1, 2, 3, 4]
+        shardTotal: [4]
+    runs-on: ubuntu-latest
+    container: mcr.microsoft.com/playwright:v1.60.0-noble
+    env:
+      CI: true
+      TESTDINO_TOKEN: ${{ secrets.TESTDINO_TOKEN }}
+      TESTDINO_CI_RUN_ID: "gh-${{ github.run_id }}-${{ github.run_attempt }}"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Evidence suite: the spec forces trace/video/screenshot to "on" for every test,
+      # so all 40 produce artifacts rather than only the failures.
+      #   --workers=2   video recording is memory hungry; keep concurrency low
+      #   --retries=0   a retry would double the artifact volume for no extra signal
+      #   continue-on-error  10 of the 40 fail by design
+      - name: Run Attachments Suite (shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }})
+        continue-on-error: true
+        run: >
+          npx tdpw test
+          --ci-run-id "$TESTDINO_CI_RUN_ID"
+          tests/test_data/attachments.spec.ts
+          --project=chromium
+          --workers=2
+          --retries=0
+          --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
+
+      - name: Upload shard report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-attachments-${{ matrix.shardIndex }}
+          path: playwright-report
+          if-no-files-found: ignore
+          retention-days: 14
+
+      # Raw traces, videos and screenshots, kept separately so they can be opened
+      # with `npx playwright show-trace` without unpacking the merged report.
+      - name: Upload raw test-results (traces, videos, screenshots)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-attachments-${{ matrix.shardIndex }}
+          path: test-results
+          if-no-files-found: ignore
+          retention-days: 7

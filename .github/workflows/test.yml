@@ -1,20 +1,20 @@
-# .github/workflows/playwright-daily.yml
-# Runs Playwright test shards every day at **11 : 42 AM IST** (06 : 12 UTC)
-# plus anytime you trigger it manually from the Actions tab.
+# .github/workflows/test.yml
+# Manual only. Trigger from the Actions tab with "Run workflow".
 
 name: Run Playwright tests
 
 on:
-  # push:          # runs on every push
-  pull_request:  # runs on new PRs or PR updates
-  schedule:
-    - cron: '30 3 * * 1-5'
   workflow_dispatch:
 
 jobs:
   run-tests:
     name: Run Playwright shards
     runs-on: ubuntu-latest
+
+    env:
+      CI: true
+      TESTDINO_TOKEN: ${{ secrets.TESTDINO_TOKEN }}
+      TESTDINO_CI_RUN_ID: "gh-${{ github.run_id }}-${{ github.run_attempt }}"
 
     strategy:
       fail-fast: false
@@ -56,63 +56,13 @@ jobs:
           npx playwright install --with-deps
 
       - name: Run shard ${{ matrix.shardIndex }}
-        run: npx playwright test --project=chromium --reporter=blob --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
+        run: npx tdpw test --ci-run-id "$TESTDINO_CI_RUN_ID" --project=chromium --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
 
-      - name: Upload blob report
+      - name: Upload shard report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: blob-report-${{ matrix.shardIndex }}
-          path: ./blob-report
-          retention-days: 1
-
-  merge-reports:
-    name: Merge Reports
-    needs: run-tests
-    if: always()             # run even if some shards fail
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js 18.x
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-
-      - name: Cache npm dependencies
-        uses: actions/cache@v3
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
-
-      - name: Install deps + browsers
-        run: |
-          npm ci
-          npx playwright install --with-deps
-
-      - name: Download all blob reports
-        uses: actions/download-artifact@v4
-        with:
-          path: ./all-blob-reports
-          pattern: blob-report-*
-          merge-multiple: true
-
-      - name: Merge HTML & JSON reports
-        run: npx playwright merge-reports --config=playwright.config.ts ./all-blob-reports
-
-      - name: Upload combined report
-        uses: actions/upload-artifact@v4
-        with:
-          name: Playwright Test Report
+          name: playwright-report-${{ matrix.shardIndex }}
           path: ./playwright-report
           retention-days: 14
 
-      - name: Send TestDino report
-        run: |
-          npx --yes tdpw ./playwright-report \
-            --token="trx_production_db4cc8ccb0cdcc980fc3f7e0a6f220b88dcaf22d76444222009b8ea742864752" \
-            --upload-html \
-            --verbose

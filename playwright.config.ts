@@ -17,7 +17,6 @@ const config: PlaywrightTestConfig = {
       outputFolder: 'playwright-report',
       open: 'never'
     }],
-    ['blob', { outputDir: 'blob-report' }], // Use blob reporter
     ['json', { outputFile: './playwright-report/report.json' }],
   ],
 

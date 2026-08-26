@@ -1,0 +1,53 @@
+name: Run Playwright Tests (Interrupted Suite)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  playwright-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        shardIndex: [1, 2, 3, 4, 5]
+        shardTotal: [5]
+    runs-on: ubuntu-latest
+    container: mcr.microsoft.com/playwright:v1.60.0-noble
+    env:
+      CI: true
+      TESTDINO_TOKEN: ${{ secrets.TESTDINO_TOKEN }}
+      TESTDINO_CI_RUN_ID: "gh-${{ github.run_id }}-${{ github.run_attempt }}"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Each shard holds 20 of the 100 tests, and --workers=20 starts all 20 at once.
+      # Every test then blocks for 180s, so when --global-timeout aborts the run at 60s
+      # all 20 are still in flight and Playwright marks each one "interrupted".
+      # The run exits non-zero by design, hence continue-on-error.
+      - name: Run Interrupted Test Suite (shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }})
+        continue-on-error: true
+        run: >
+          npx tdpw test
+          --ci-run-id "$TESTDINO_CI_RUN_ID"
+          tests/test_data/interrupted.spec.ts
+          --project=chromium
+          --workers=20
+          --global-timeout=60000
+          --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
+
+      - name: Upload shard report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-interrupted-${{ matrix.shardIndex }}
+          path: playwright-report
+          if-no-files-found: ignore
+          retention-days: 14
