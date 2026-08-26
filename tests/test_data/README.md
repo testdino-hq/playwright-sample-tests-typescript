@@ -440,18 +440,22 @@ Owners are assigned by feature area: `identity-squad`, `checkout-squad`, `catalo
 
 ## 7. How results reach TestDino
 
+There is no blob reporter and no merge job. Each shard reports its own results,
+and TestDino groups them into a single run using a shared run id.
+
 ```
 Each shard
 ──────────
-npx playwright test --reporter=blob
+npx tdpw test --ci-run-id "gh-<run_id>-<run_attempt>" ...
     │
-    └── blob report uploaded as an artifact
+    ├── HTML report uploaded as a GitHub artifact (14 days)
+    └── npx tdpw ./playwright-report --upload-html [--upload-traces]
 
-After all shards finish
-───────────────────────
-playwright merge-reports  →  one HTML report
-    │
-    └── npx tdpw ./playwright-report --token=$TESTDINO_TOKEN --upload-html [--upload-traces]
+TestDino groups every shard sharing the same --ci-run-id into one run.
 ```
 
-Merge jobs use `if: always()` so a report is produced even when shards fail — which most of these suites do by design.
+The split mode suite works the same way but groups on `--split-id` instead, since
+its jobs run different commands rather than shards of one command.
+
+Upload steps use `if: always()` so results are still sent when shards fail — which
+most of these suites do by design.

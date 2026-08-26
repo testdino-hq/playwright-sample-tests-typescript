@@ -14,6 +14,8 @@ jobs:
     container: mcr.microsoft.com/playwright:v1.60.0-noble
     env:
       CI: true
+      TESTDINO_TOKEN: ${{ secrets.TESTDINO_TOKEN }}
+      TESTDINO_CI_RUN_ID: "gh-${{ github.run_id }}-${{ github.run_attempt }}"
 
     steps:
       - uses: actions/checkout@v4
@@ -34,21 +36,22 @@ jobs:
       - name: Run Attachments Suite (shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }})
         continue-on-error: true
         run: >
-          npx playwright test tests/test_data/attachments.spec.ts
+          npx tdpw test
+          --ci-run-id "$TESTDINO_CI_RUN_ID"
+          tests/test_data/attachments.spec.ts
           --project=chromium
-          --reporter=blob
           --workers=2
           --retries=0
           --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
 
-      - name: Upload blob report
+      - name: Upload shard report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: blob-report-attachments-${{ matrix.shardIndex }}
-          path: blob-report
+          name: playwright-report-attachments-${{ matrix.shardIndex }}
+          path: playwright-report
           if-no-files-found: ignore
-          retention-days: 1
+          retention-days: 14
 
       # Raw traces, videos and screenshots, kept separately so they can be opened
       # with `npx playwright show-trace` without unpacking the merged report.
@@ -60,46 +63,3 @@ jobs:
           path: test-results
           if-no-files-found: ignore
           retention-days: 7
-
-  merge-reports:
-    needs: playwright-tests
-    if: always()
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20.x"
-          cache: "npm"
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Download blob reports
-        uses: actions/download-artifact@v4
-        with:
-          pattern: blob-report-attachments-*
-          path: all-blob-reports
-          merge-multiple: true
-
-      - name: Merge reports
-        run: npx playwright merge-reports --config=playwright.config.ts all-blob-reports
-
-      - name: Upload merged HTML report
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-html-report-attachments
-          path: playwright-report
-          retention-days: 14
-
-      # --upload-traces is what pushes the trace files through to TestDino's
-      # trace viewer and debug-evidence views.
-      - name: Send report to TestDino
-        run: |
-          npx --yes tdpw ./playwright-report \
-            --token="${{ secrets.TESTDINO_TOKEN }}" \
-            --upload-html \
-            --upload-traces \
-            --verbose

@@ -67,44 +67,12 @@ jobs:
           --retries=1
           tests/test_data/feature.spec.ts
 
-      - name: Upload blob report
+      - name: Upload split report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: blob-report-split-${{ strategy.job-index }}
-          path: blob-report
-          if-no-files-found: ignore
-          retention-days: 1
-
-  merge-reports:
-    needs: split
-    if: always()
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20.x"
-          cache: "npm"
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Download blob reports
-        uses: actions/download-artifact@v4
-        with:
-          pattern: blob-report-split-*
-          path: all-blob-reports
-          merge-multiple: true
-
-      - name: Merge reports
-        run: npx playwright merge-reports --config=playwright.config.ts all-blob-reports
-
-      - name: Upload merged HTML report
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-html-report-split
+          name: playwright-report-split-${{ strategy.job-index }}
           path: playwright-report
+          if-no-files-found: ignore
           retention-days: 14
+
