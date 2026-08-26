@@ -38,7 +38,7 @@ Everything else — Node, browsers, dependencies — is handled inside the workf
 
 | # | Suite | Tests | Shards × Workers | Retries | Produces |
 |---|---|---|---|---|---|
-| 1 | [Passed](#1-passed) | 100 | 5 × 5 | — | 100% green run |
+| 1 | [Passed](#1-passed) | 100 | 5 × 5 | 1 | 100% green run |
 | 2 | [Failed](#2-failed) | 100 | 5 × 5 | 1 | 75 failed + 25 flaky |
 | 3 | [Flaky](#3-flaky) | 100 | 5 × 5 | **1** | 100 flaky |
 | 4 | [Skipped](#4-skipped) | 100 | 5 × 5 | — | 100 skipped |
@@ -70,7 +70,7 @@ curl -X POST -H "Accept: application/vnd.github+json" \
   -d '{"ref":"main"}'
 ```
 
-**Expected:** 100 passed, exit code 0.
+**Expected:** 100 passed, exit code 0. `--retries=1` is set as a safety net against transient network blips, not because any test is flaky.
 
 ---
 

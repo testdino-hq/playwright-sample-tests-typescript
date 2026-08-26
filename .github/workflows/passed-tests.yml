@@ -26,11 +26,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # --retries=1 is a safety net, not flakiness tolerance: these 100 tests hit a
+      # live demo site, and one transient network blip should not turn the green run red.
       - name: Run Passed Test Suite (shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }})
         run: >
           npx playwright test tests/test_data/passed.spec.ts
           --project=chromium
-          --retries=0
+          --retries=1
           --workers=5
           --reporter=blob
           --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
