@@ -12,7 +12,7 @@ test.describe('Split 1 - API Contract', {
     { type: 'testdino:owner', description: 'qa-platform' },
     { type: 'testdino:feature', description: 'API Contract' },
     { type: 'testdino:link', description: 'https://jira.example.com/browse/QA-7100' },
-    { type: 'testdino:context', description: 'Split 1 of 5 - runs under --project=api with no browser, assigned by project.' },
+    { type: 'testdino:context', description: 'Split 1 of 5 - API tests with no browser, assigned by --grep @split-api because this repo has a single project with no grep filter.' },
   ],
 }, () => {
   test('[Split/API] Status endpoint returns 200', { tag: ['@critical', '@network'] }, async ({ request }) => {
@@ -136,7 +136,7 @@ test.describe('Split 2 - UI Smoke', {
     { type: 'testdino:owner', description: 'qa-team' },
     { type: 'testdino:feature', description: 'UI Smoke' },
     { type: 'testdino:link', description: 'https://jira.example.com/browse/QA-7200' },
-    { type: 'testdino:context', description: 'Split 2 of 5 - the only split that is additionally sharded, assigned by --grep @split-smoke.' },
+    { type: 'testdino:context', description: 'Split 2 of 5 - assigned by --grep @split-smoke, and additionally sharded across two jobs.' },
   ],
 }, () => {
   test('[Split/Smoke] Landing page shows the welcome heading', { tag: ['@critical', '@navigation'] }, async ({ page }) => {
