@@ -22,6 +22,7 @@
     "typescript": "^5.9.2"
   },
   "dependencies": {
+    "@testdino/playwright": "^2.4.0",
     "dotenv": "^17.2.2",
     "playwright": "^1.60.0",
     "tdpw": "^1.0.37"

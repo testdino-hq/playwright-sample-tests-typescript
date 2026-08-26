@@ -1,5 +1,8 @@
 import type { PlaywrightTestConfig } from '@playwright/test';
 import { devices } from '@playwright/test';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const isCI = !!process.env.CI;
 
@@ -18,6 +21,10 @@ const config: PlaywrightTestConfig = {
       open: 'never'
     }],
     ['json', { outputFile: './playwright-report/report.json' }],
+    ['@testdino/playwright', {
+      token: process.env.TESTDINO_TOKEN,
+      serverUrl: process.env.TESTDINO_SERVER_URL,
+    }],
   ],
 
   use: {
