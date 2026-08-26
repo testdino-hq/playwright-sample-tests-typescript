@@ -1,0 +1,110 @@
+name: Run Playwright Tests (Split Mode)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  split:
+    strategy:
+      # Required. A cancelled sibling job would leave the split group incomplete.
+      fail-fast: false
+      matrix:
+        include:
+          # Split 1 - API tests. This repo has one project with no grep filter,
+          # so the API group is selected by tag rather than by --project.
+          - { split: "1/5", project: "chromium", grep: "@split-api", shard: "" }
+          # Split 2 - UI smoke, selected by grep AND additionally sharded across
+          # two runners. Both jobs report the same --split position.
+          - { split: "2/5", project: "chromium", grep: "@split-smoke", shard: "1/2" }
+          - { split: "2/5", project: "chromium", grep: "@split-smoke", shard: "2/2" }
+          # Split 3 - UI regression, selected by grep.
+          - { split: "3/5", project: "chromium", grep: "@split-regression", shard: "" }
+          # Split 4 - the slow specs, isolated so they do not hold up the fast splits.
+          - { split: "4/5", project: "chromium", grep: "@split-slow", shard: "" }
+          # Split 5 - orchestration data: mixed outcomes across fast/medium/slow
+          # durations, sharded 2 ways so load balancing has a real spread to work with.
+          - { split: "5/5", project: "chromium", grep: "@split-orchestration", shard: "1/2" }
+          - { split: "5/5", project: "chromium", grep: "@split-orchestration", shard: "2/2" }
+
+    runs-on: ubuntu-latest
+    container: mcr.microsoft.com/playwright:v1.60.0-noble
+    env:
+      CI: true
+      TESTDINO_TOKEN: ${{ secrets.TESTDINO_TOKEN }}
+      # Shared across every job in the group - this is what merges the seven jobs
+      # into one logical run. run_attempt is included so a re-run does not merge
+      # back into the original run.
+      TESTDINO_SPLIT_ID: "gh-${{ github.run_id }}-${{ github.run_attempt }}"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install latest TestDino Playwright package
+        run: |
+          npm install --no-save --package-lock=false @testdino/playwright@latest
+          npm ls @testdino/playwright --depth=0
+
+      # --split only LABELS the results for this job; it does not choose which
+      # tests run. Selection is done here with --project and --grep.
+      - name: Run split ${{ matrix.split }} (${{ matrix.project }}${{ matrix.grep && format(' {0}', matrix.grep) || '' }}${{ matrix.shard && format(' shard {0}', matrix.shard) || '' }})
+        continue-on-error: true
+        run: >
+          npx tdpw test
+          --split ${{ matrix.split }}
+          --split-id "$TESTDINO_SPLIT_ID"
+          --tags "split-mode,orchestration"
+          --project=${{ matrix.project }}
+          ${{ matrix.grep && format('--grep "{0}"', matrix.grep) || '' }}
+          ${{ matrix.shard && format('--shard={0}', matrix.shard) || '' }}
+          --retries=1
+          tests/test_data/feature.spec.ts
+
+      - name: Upload blob report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blob-report-split-${{ strategy.job-index }}
+          path: blob-report
+          if-no-files-found: ignore
+          retention-days: 1
+
+  merge-reports:
+    needs: split
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download blob reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: blob-report-split-*
+          path: all-blob-reports
+          merge-multiple: true
+
+      - name: Merge reports
+        run: npx playwright merge-reports --config=playwright.config.ts all-blob-reports
+
+      - name: Upload merged HTML report
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-html-report-split
+          path: playwright-report
+          retention-days: 14
