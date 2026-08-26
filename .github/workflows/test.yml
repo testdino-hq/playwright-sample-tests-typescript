@@ -1,14 +1,9 @@
-# .github/workflows/playwright-daily.yml
-# Runs Playwright test shards every day at **11 : 42 AM IST** (06 : 12 UTC)
-# plus anytime you trigger it manually from the Actions tab.
+# .github/workflows/test.yml
+# Manual only. Trigger from the Actions tab with "Run workflow".
 
 name: Run Playwright tests
 
 on:
-  # push:          # runs on every push
-  pull_request:  # runs on new PRs or PR updates
-  schedule:
-    - cron: '30 3 * * 1-5'
   workflow_dispatch:
 
 jobs:
