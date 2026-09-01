@@ -5,7 +5,9 @@
 import { test, expect } from './fixtures.js';
 import type AllPages from '../pages/AllPages.js';
 import dotenv from 'dotenv';
-dotenv.config({ override: true });
+// quiet: --list loads every spec file, so dotenv's "injected env" notice
+// would land on stdout and corrupt the JSON that `orchestrate discover` parses.
+dotenv.config({ override: true, quiet: true });
 
 async function login(allPages: AllPages, username = process.env.USERNAME, password = process.env.PASSWORD) {
   await allPages.loginPage.clickOnUserProfileIcon();
