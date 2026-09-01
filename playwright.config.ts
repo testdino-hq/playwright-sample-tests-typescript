@@ -2,12 +2,19 @@ import type { PlaywrightTestConfig } from '@playwright/test';
 import { devices } from '@playwright/test';
 import dotenv from 'dotenv';
 
-dotenv.config();
+// quiet: dotenv v17 prints an "injected env" notice to stdout, which
+// corrupts `playwright test --list --reporter=json` -- the exact output
+// `tdpw orchestrate discover` parses to build the master list.
+dotenv.config({ quiet: true });
 
 const isCI = !!process.env.CI;
 
 const config: PlaywrightTestConfig = {
   testDir: './tests',
+  // The orchestration fixtures are a known-answer suite for the L0 discover
+  // contract: listed, never executed. Their counts are hand-computed, so a
+  // normal run must not pick them up.
+  testIgnore: '**/orchestration/fixtures/**',
   fullyParallel: true,
   forbidOnly: isCI,
   retries: isCI ? 1 : 0,

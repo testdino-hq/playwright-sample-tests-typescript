@@ -1,0 +1,101 @@
+{
+  "name": "@testdino/playwright",
+  "version": "2.4.0",
+  "description": "TestDino's real-time streaming reporter and CLI for Playwright test execution",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "tdpw": "bin/tdpw.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "files": [
+    "dist",
+    "bin",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "keywords": [
+    "playwright",
+    "playwright reporter",
+    "playwright dashboard",
+    "test reporting",
+    "test observability",
+    "flaky tests",
+    "test analytics",
+    "trace viewer",
+    "reporter",
+    "testing",
+    "cli",
+    "streaming",
+    "ci",
+    "testdino"
+  ],
+  "author": "TestDino",
+  "license": "SEE LICENSE IN LICENSE",
+  "homepage": "https://www.testdino.com",
+  "bugs": {
+    "url": "https://docs.testdino.com/",
+    "email": "support@testdino.com"
+  },
+  "private": false,
+  "peerDependencies": {
+    "@playwright/test": "^1.52.0"
+  },
+  "dependencies": {
+    "axios": "^1.18.1",
+    "chalk": "^5.6.2",
+    "commander": "^15.0.0",
+    "dotenv": "^17.4.2",
+    "execa": "^9.6.1",
+    "istanbul-lib-coverage": "^3.2.2",
+    "istanbul-lib-report": "^3.0.1",
+    "istanbul-reports": "^3.2.0",
+    "jiti": "^2.7.0",
+    "kafkajs": "^2.2.4",
+    "picomatch": "^4.0.4",
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.61.1",
+    "@types/express": "^5.0.6",
+    "@types/istanbul-lib-coverage": "^2.0.6",
+    "@types/istanbul-lib-report": "^3.0.3",
+    "@types/istanbul-reports": "^3.0.4",
+    "@types/node": "^26.0.1",
+    "@types/picomatch": "^4.0.3",
+    "@types/ws": "^8.5.0",
+    "@vitest/coverage-v8": "^4.1.9",
+    "eslint": "^10.5.0",
+    "eslint-config-prettier": "^10.1.8",
+    "express": "^5.2.1",
+    "prettier": "^3.8.4",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.62.0",
+    "vitest": "^4.1.9"
+  }
+}
