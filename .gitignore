@@ -25,3 +25,9 @@ yarn-error.log*
 
 # VS Code settings
 .vscode/
+# Local vendored package build (pre-release @testdino/playwright).
+# The build itself IS committed -- CI needs a CLI that has `tdpw orchestrate`.
+# Only its installed deps are ignored; npm ci recreates them from the lockfile.
+package 2/node_modules/
+# ...but the vendored dist/ must survive the root `dist/` rule above.
+!package 2/dist/

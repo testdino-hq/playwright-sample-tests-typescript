@@ -1,0 +1,205 @@
+name: Run Playwright Tests (Orchestration)
+
+# Orchestrated run: one machine discovers the filtered test set and mints an
+# orchestration id, then N machines join that id and pull spec-file batches from
+# the server-owned queue. The whole point is that the N machines produce ONE run
+# with every test executed exactly once -- see orchastrastion_test_stretergy.md,
+# properties P1 (no loss), P2 (no duplication) and P3 (one unified run).
+#
+# This is NOT sharding. There is no --shard flag anywhere below: the split is
+# decided by the dispatcher at runtime, not by a fixed index/total pair.
+#
+# PREREQUISITE -- read before enabling on CI:
+#   `tdpw orchestrate` ships in the vendored pre-release build at "package 2/",
+#   which .gitignore currently excludes. Until that build is committed (or a
+#   published version carrying `orchestrate` is installed from the registry),
+#   `npm ci` on the runner will install a CLI that has only `tdpw test` and the
+#   discover step will fail. The fallback job below is what keeps that from
+#   blocking the pipeline.
+
+on:
+  workflow_dispatch:
+    inputs:
+      machines:
+        description: "How many machines to distribute the suite across"
+        required: false
+        default: "4"
+      grep:
+        description: "Playwright --grep filter applied at discovery time"
+        required: false
+        default: "@orchestration"
+      project:
+        description: "Playwright project to discover"
+        required: false
+        default: "chromium"
+
+concurrency:
+  group: orchestration-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CI: true
+  TESTDINO_TOKEN: ${{ secrets.TESTDINO_TOKEN }}
+  TESTDINO_SERVER_URL: ${{ secrets.TESTDINO_SERVER_URL }}
+  TESTDINO_CI_RUN_ID: "gh-${{ github.run_id }}-${{ github.run_attempt }}"
+  # NOT `npx tdpw`: the `tdpw` package (1.0.37) declares the same bin name,
+  # and which one wins node_modules/.bin depends on install order. Only
+  # @testdino/playwright carries `orchestrate`, so address it by path.
+  TDPW: node node_modules/@testdino/playwright/bin/tdpw.js
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Phase 1 -- discover. Lists the filtered suite and mints ONE orchestration id.
+  # No tests execute here (AC-C1): no browser is launched, no results reported.
+  # ---------------------------------------------------------------------------
+  discover:
+    name: Discover and mint orchestration
+    runs-on: ubuntu-latest
+    container: mcr.microsoft.com/playwright:v1.60.0-noble
+    outputs:
+      orchestration-id: ${{ steps.mint.outputs.orchestration-id }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Plan the machine matrix
+        id: plan
+        # "4" -> [1,2,3,4]. Consumed by fromJSON() in the run-machine job.
+        run: echo "matrix=[$(seq -s, 1 ${{ inputs.machines }})]" >> "$GITHUB_OUTPUT"
+
+      - name: Discover the filtered test set
+        run: >
+          $TDPW orchestrate discover
+          --grep "${{ inputs.grep }}"
+          --project "${{ inputs.project }}"
+          --machines ${{ inputs.machines }}
+          --out master.json
+
+      - name: Read the minted orchestration id
+        id: mint
+        # node, not jq: jq is not guaranteed inside the Playwright image.
+        run: |
+          set -euo pipefail
+          ID="$(node -p "require('./master.json').orchestrationId")"
+          if [ -z "$ID" ] || [ "$ID" = "undefined" ]; then
+            echo "::error::discover did not return an orchestrationId"
+            exit 1
+          fi
+          echo "orchestration-id=$ID" >> "$GITHUB_OUTPUT"
+          echo "Minted orchestration: $ID"
+
+      - name: Summarise the master list
+        run: |
+          node -e "
+            const m = require('./master.json');
+            console.log('orchestrationId:', m.orchestrationId);
+            console.log('created:', m.created);
+            console.log('specCount:', m.specCount);
+            console.log('machines:', m.machines, ' workers:', m.workers);
+          " >> "$GITHUB_STEP_SUMMARY"
+
+      # master.json is the oracle for the P1/P2 set arithmetic: the discovered
+      # (file, project) set that the union of all assign frames must equal.
+      - name: Upload master list
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: orchestration-master-list
+          path: master.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # Phase 2 -- N machines join the orchestration and drain the queue.
+  # Each is a peer; none knows its slice ahead of time.
+  # ---------------------------------------------------------------------------
+  run-machine:
+    name: Machine ${{ matrix.machine }}
+    needs: discover
+    runs-on: ubuntu-latest
+    container: mcr.microsoft.com/playwright:v1.60.0-noble
+    strategy:
+      # fail-fast MUST stay false: cancelling a sibling mid-batch is exactly the
+      # AC-R3 crash scenario, and would leave the run finalised `incomplete`.
+      fail-fast: false
+      matrix:
+        machine: ${{ fromJSON(needs.discover.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # continue-on-error: the corpus contains 40 deliberately failing tests and
+      # 10 deliberate timeouts, so a correct run still exits non-zero.
+      # No --retries flag: `orchestrate run` takes none. Retries come from
+      # playwright.config.ts, which sets retries=1 when CI is set -- required, or
+      # the 30 flaky tests report as failed.
+      - name: Join orchestration ${{ needs.discover.outputs.orchestration-id }}
+        continue-on-error: true
+        run: >
+          $TDPW orchestrate run
+          --orchestration-id "${{ needs.discover.outputs.orchestration-id }}"
+          --device-id "gh-${{ github.run_id }}-machine-${{ matrix.machine }}"
+
+      - name: Upload machine report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: orchestration-report-machine-${{ matrix.machine }}
+          path: playwright-report
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # AC-R4 -- if the dispatcher is unreachable, fall back to a normal local run.
+  # We must never be the reason a pipeline is blocked.
+  # ---------------------------------------------------------------------------
+  fallback-local-run:
+    name: Fallback (dispatcher unreachable)
+    needs: discover
+    if: failure() && needs.discover.result == 'failure'
+    runs-on: ubuntu-latest
+    container: mcr.microsoft.com/playwright:v1.60.0-noble
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run the suite locally instead
+        continue-on-error: true
+        run: >
+          $TDPW test
+          --ci-run-id "$TESTDINO_CI_RUN_ID"
+          tests/test_data/orchastration
+          --project="${{ inputs.project }}"
+          --workers=4
+          --retries=1
+
+      - name: Upload fallback report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: orchestration-report-fallback
+          path: playwright-report
+          if-no-files-found: ignore
+          retention-days: 14
