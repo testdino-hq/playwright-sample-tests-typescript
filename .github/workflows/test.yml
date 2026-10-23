@@ -1,5 +1,8 @@
 # .github/workflows/test.yml
 # Runs on a daily schedule and can also be triggered manually from the Actions tab.
+# Results are streamed to TestDino by the @testdino/playwright reporter
+# (configured in playwright.config.ts). Every shard shares one TESTDINO_CI_RUN_ID,
+# so TestDino groups all 5 shards into a single run.
 
 name: Run Playwright tests
 
@@ -13,6 +16,9 @@ jobs:
   run-tests:
     name: Run Playwright shards
     runs-on: ubuntu-latest
+    # Browsers + OS deps are pre-installed in the image. Keep the tag in sync with
+    # the playwright version in package.json so the browser build matches the client.
+    container: mcr.microsoft.com/playwright:v1.64.1-noble
 
     env:
       CI: true
@@ -23,20 +29,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shardIndex: [1,2,3,4,5]
+        shardIndex: [1, 2, 3, 4, 5]
         shardTotal: [5]
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js 20.x
-        uses: actions/setup-node@v3
+      - uses: actions/setup-node@v4
         with:
-          node-version: '20.x'
+          node-version: "20.x"
+          cache: "npm"
+
       - name: Create .env file
         run: |
           echo "USERNAME=${{ secrets.USERNAME }}" >> .env
-          echo "PASSWORD=${{ secrets.PASSWORD }}" >> .env
           echo "PASSWORD=${{ secrets.PASSWORD }}" >> .env
           echo "NEW_PASSWORD=${{ secrets.NEW_PASSWORD }}" >> .env
           echo "FIRST_NAME=${{ secrets.FIRST_NAME }}" >> .env
@@ -45,22 +51,21 @@ jobs:
           echo "STATE=${{ secrets.STATE }}" >> .env
           echo "COUNTRY=${{ secrets.COUNTRY }}" >> .env
           echo "ZIP_CODE=${{ secrets.ZIP_CODE }}" >> .env
-     
-      - name: Cache npm dependencies
-        uses: actions/cache@v3
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
 
-      - name: Install deps + browsers
-        run: |
-          npm ci
-          npx playwright install --with-deps
+      - name: Install dependencies
+        run: npm ci
 
+      # --workers=5 matches the other suite workflows (the plain `tdpw test` default
+      # was 1 worker in CI, which made the full suite crawl). --retries=1 is a safety
+      # net for transient network blips against the live demo site, not flaky tolerance.
       - name: Run shard ${{ matrix.shardIndex }}
-        run: npx tdpw test --ci-run-id "$TESTDINO_CI_RUN_ID" --project=chromium --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
+        run: >
+          npx tdpw test
+          --ci-run-id "$TESTDINO_CI_RUN_ID"
+          --project=chromium
+          --retries=1
+          --workers=5
+          --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
 
       - name: Upload shard report
         if: ${{ !cancelled() }}
@@ -68,5 +73,5 @@ jobs:
         with:
           name: playwright-report-${{ matrix.shardIndex }}
           path: ./playwright-report
+          if-no-files-found: ignore
           retention-days: 14
-
