@@ -7,6 +7,9 @@
 name: Run Playwright tests
 
 on:
+  # Trigger on every push to main (i.e. when you commit and push).
+  push:
+    branches: [main]
   workflow_dispatch:
   schedule:
     # 09:00 IST (03:30 UTC) every morning. Scheduled runs always use the main branch.
@@ -58,9 +61,14 @@ jobs:
       # --workers=5 matches the other suite workflows (the plain `tdpw test` default
       # was 1 worker in CI, which made the full suite crawl). --retries=1 is a safety
       # net for transient network blips against the live demo site, not flaky tolerance.
+      # Invoke the vendored @testdino/playwright CLI by PATH, not `npx tdpw`:
+      # the npm `tdpw` package declares the same `tdpw` bin but only ships
+      # upload/cache/last-failed (no `test`, no --ci-run-id). Which bin wins
+      # node_modules/.bin is install-order luck, so address it directly.
+      # Same reasoning as orchastration.yml's TDPW variable.
       - name: Run shard ${{ matrix.shardIndex }}
         run: >
-          npx tdpw test
+          node node_modules/@testdino/playwright/bin/tdpw.js test
           --ci-run-id "$TESTDINO_CI_RUN_ID"
           --project=chromium
           --retries=1
