@@ -1,10 +1,13 @@
 # .github/workflows/test.yml
-# Manual only. Trigger from the Actions tab with "Run workflow".
+# Runs on a daily schedule and can also be triggered manually from the Actions tab.
 
 name: Run Playwright tests
 
 on:
   workflow_dispatch:
+  schedule:
+    # 09:00 IST (03:30 UTC) every morning. Scheduled runs always use the main branch.
+    - cron: "30 3 * * *"
 
 jobs:
   run-tests:
